@@ -1,6 +1,14 @@
-import pytest
+from dotenv import load_dotenv
+import requests
 import allure
-from utils.mocks import KinopoiskMockClient
+import pytest
+import os
+
+
+load_dotenv()  # Загрузка переменных окружения из .env файла
+
+BASE_URL = os.getenv("BASE_URL", "https://api.kinopoisk.dev")
+HEADERS = {"Content-Type": "application/json"}
 
 
 @allure.epic("КиноПоиск - API Тестирование")
@@ -9,7 +17,8 @@ class TestKinopoiskAPI:
 
     @pytest.fixture
     def api_client(self):
-        return KinopoiskMockClient()
+        """Клиент для отправки запросов к API Кинопоиск."""
+        return requests.Session()
 
     @allure.story("Фильтрация и поиск")
     @allure.severity(allure.severity_level.CRITICAL)
@@ -25,14 +34,17 @@ class TestKinopoiskAPI:
             allure.dynamic.title("Поиск фильмов по году выпуска: 2023")
             test_year = 2023
 
-        with allure.step("Выполнение API запроса с фильтром по году"):
-            response = api_client.search_movies(filters={"year": test_year})
+        with allure.step("Выполнение API-запроса с фильтром по году"):
+            endpoint = "/catalog/films"
+            params = {"year": test_year}
+            response = api_client.get(
+                BASE_URL + endpoint, headers=HEADERS, params=params)
             allure.attach(f"Фильтр: year={test_year}", name="Request Filter")
 
-        with allure.step("Проверка статус-кода ответа"):
+        with allure.step("Проверка статуса ответа"):
             assert response.status_code == 200
             allure.attach(
-                f"Status Code: {response.status_code}", name="HTTP Status")
+                f"Код состояния: {response.status_code}", name="HTTP Status")
 
         with allure.step("Валидация структуры ответа"):
             data = response.json()
@@ -46,8 +58,8 @@ class TestKinopoiskAPI:
             for movie in data["docs"]:
                 assert movie["year"] == test_year
             allure.attach(
-                f"Все фильмы соответствуют году: {test_year}",
-                name="Year Validation")
+                f"""Все фильмы соответствуют году: {test_year}"
+                name="Year Validation""")
 
     @allure.story("Метаданные фильмов")
     @allure.severity(allure.severity_level.NORMAL)
@@ -60,8 +72,9 @@ class TestKinopoiskAPI:
             test_movie_id = 4664634
 
         with allure.step("Запрос информации о наградах"):
-            response = api_client.get_movie_awards(movie_id=test_movie_id)
-            allure.attach(f"Movie ID: {test_movie_id}",
+            endpoint = f"/film/{test_movie_id}/awards"
+            response = api_client.get(BASE_URL + endpoint, headers=HEADERS)
+            allure.attach(f"ID фильма: {test_movie_id}",
                           name="Request Parameter")
 
         with allure.step("Проверка успешного ответа"):
@@ -80,8 +93,8 @@ class TestKinopoiskAPI:
             allure.attach(
                 f"Количество наград: {len(data['docs'])}", name="Awards Count")
             allure.attach(
-                f"Movie ID в ответе: {award['movieId']}",
-                name="Movie ID Validation")
+                f"""Movie ID в ответе: {award['movieId']
+                                        }", name="Movie ID Validation""")
 
     @allure.story("Фильтрация по рейтингу")
     @allure.severity(allure.severity_level.NORMAL)
@@ -93,10 +106,12 @@ class TestKinopoiskAPI:
             high_rating = 9
 
         with allure.step("Выполнение запроса с фильтром по рейтингу"):
-            response = api_client.search_movies(
-                filters={"rating.kp": high_rating})
+            endpoint = "/catalog/films"
+            params = {"ratingFrom": high_rating}
+            response = api_client.get(
+                BASE_URL + endpoint, headers=HEADERS, params=params)
             allure.attach(
-                f"Фильтр: rating.kp={high_rating}", name="Rating Filter")
+                f"Фильтр: ratingFrom={high_rating}", name="Rating Filter")
 
         with allure.step("Проверка ответа API"):
             assert response.status_code == 200
@@ -104,17 +119,16 @@ class TestKinopoiskAPI:
 
         with allure.step("Верификация рейтинга у найденных фильмов"):
             for movie in data["docs"]:
-                assert movie["rating"]["kp"] == high_rating
-
+                assert movie["rating"]["kp"] >= high_rating
             allure.attach(
-                f"Найдено фильмов с рейтингом {high_rating}: {len(data['docs'])
-                                                              }",
+                f"Найдено фильмов с рейтингом {high_rating}+: {
+                    len(data['docs'])}",
                 name="High Rating Movies")
 
     @allure.story("Системные метаданные")
     @allure.severity(allure.severity_level.MINOR)
-    @allure.description(
-        "Тестирование фильтрации по дате добавления в базу данных")
+    @allure.description("Тестирование фильтрации по дате добавления"
+                        "в базу данных")
     @allure.tag("metadata", "system", "admin")
     @allure.label("owner", "api-team")
     @allure.label("layer", "backend")
@@ -124,8 +138,10 @@ class TestKinopoiskAPI:
             test_date = "2025-06-04"
 
         with allure.step("Выполнение запроса с фильтром по дате"):
-            response = api_client.search_movies(
-                filters={"createdAt": test_date})
+            endpoint = "/catalog/films"
+            params = {"createdAt": test_date}
+            response = api_client.get(
+                BASE_URL + endpoint, headers=HEADERS, params=params)
             allure.attach(f"Фильтр: createdAt={test_date}", name="Date Filter")
 
         with allure.step("Анализ ответа сервера"):
@@ -144,68 +160,22 @@ class TestKinopoiskAPI:
             allure.attach(
                 f"Дата создания: {item['createdAt']}", name="Creation Date")
 
-    @allure.story("Основная информация о фильмах")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description(
-        "Получение детальной информации о фильме по его идентификатору")
-    @allure.tag("movie", "details", "core")
-    @allure.link("https://api.kinopoisk.dev/v1.4/movie/{id}",
-                 name="Movie Endpoint")
-    def test_movie_details_by_id(self, api_client):
-        with allure.step("Подготовка тестового ID фильма"):
-            allure.dynamic.title("Детали фильма по ID: 4866668")
-            test_movie_id = 4866668
-
-        with allure.step("Запрос детальной информации о фильме"):
-            response = api_client.get_movie(test_movie_id)
-            allure.attach(f"Movie ID: {test_movie_id}",
-                          name="Request Parameter")
-
-        with allure.step("Проверка корректности ответа"):
-            assert response.status_code == 200
-            data = response.json()
-
-        with allure.step("Валидация обязательных полей фильма"):
-            assert "id" in data
-            assert "name" in data
-            assert "rating" in data
-            assert "year" in data
-
-        with allure.step("Проверка соответствия ID запроса и ответа"):
-            assert data["id"] == test_movie_id
-            allure.attach(
-                f"Название фильма: {data['name']}", name="Movie Title")
-            allure.attach(f"Год выпуска: {data['year']}", name="Release Year")
-
     @allure.story("Обработка ошибок")
     @allure.severity(allure.severity_level.NORMAL)
-    @allure.description(
-        "Тестирование обработки несуществующих ресурсов (404 ошибка)")
+    @allure.description("Тестирование обработки несуществующих"
+                        "ресурсов (404 ошибка)")
     @allure.tag("error", "validation", "negative")
     @allure.label("owner", "qa-team")
     @allure.label("priority", "p1")
     def test_movie_not_found(self, api_client):
-        with allure.step("Подготовка несуществующего ID фильма"):
+        with allure.step("Поиск по несуществующему ID фильма"):
             allure.dynamic.title(
                 "Обработка 404 ошибки для несуществующего фильма")
             non_existent_id = 999999
 
-        with allure.step("Настройка мока для возврата 404 ошибки"):
-            api_client.set_mock_response(
-                status_code=404,
-                json_data={
-                    "error": {
-                        "code": 404,
-                        "message": "Фильм не найден"
-                    }
-                }
-            )
-            allure.attach(
-                f"Mock настроен на 404 для ID: {non_existent_id}",
-                name="Mock Setup")
-
         with allure.step("Выполнение запроса к несуществующему ресурсу"):
-            response = api_client.get_movie(non_existent_id)
+            endpoint = f"/film/{non_existent_id}"
+            response = api_client.get(BASE_URL + endpoint, headers=HEADERS)
 
         with allure.step("Проверка кода ошибки"):
             assert response.status_code == 404
@@ -217,13 +187,13 @@ class TestKinopoiskAPI:
             assert "error" in error_data
             assert error_data["error"]["code"] == 404
             allure.attach(
-                f"Сообщение ошибки: {error_data['error']['message']}",
-                name="Error Message")
+                f"""Сообщение ошибки: {error_data['error']['message']}"
+                name="Error Message""")
 
     @allure.story("Пагинация и лимиты")
     @allure.severity(allure.severity_level.NORMAL)
-    @allure.description(
-        "Тестирование механизма пагинации и ограничения выборки")
+    @allure.description("Тестирование механизма пагинации и "
+                        "ограничения выборки")
     @allure.tag("pagination", "performance", "optimization")
     @allure.issue("KP-789", "Пагинация результатов")
     @allure.parent_suite("API Tests")
@@ -235,14 +205,13 @@ class TestKinopoiskAPI:
             test_limit = 10
 
         with allure.step("Выполнение запроса с пагинацией"):
-            response = api_client.search_movies(
-                filters={"year": 2020},
-                page=test_page,
-                limit=test_limit
-            )
+            endpoint = "/catalog/films"
+            params = {"year": 2020, "page": test_page, "limit": test_limit}
+            response = api_client.get(
+                BASE_URL + endpoint, headers=HEADERS, params=params)
             allure.attach(
-                f"Параметры: page={test_page}, limit={test_limit}",
-                name="PaginationParams")
+                f"""Параметры: page={test_page}, limit={test_limit}"
+                name="PaginationParams""")
 
         with allure.step("Проверка успешного ответа"):
             assert response.status_code == 200
@@ -262,5 +231,39 @@ class TestKinopoiskAPI:
             allure.attach(
                 f"Всего страниц: {data['pages']}", name="Total Pages")
             allure.attach(
-                f"Элементов на странице: {
-                    len(data['docs'])}", name="Items per Page")
+                f"""Элементов на странице: {len(data['docs'])}"
+                name="Items per Page""")
+
+    @allure.story("Основная информация о фильмах")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @allure.description("Получение детальной информации о"
+                        "фильме по его идентификатору")
+    @allure.tag("movie", "details", "core")
+    @allure.link("https://api.kinopoisk.dev/v1.4/movie/{id}",
+                 name="Movie Endpoint")
+    def test_movie_details_by_id(self, api_client):
+        with allure.step("Подготовка тестового ID фильма"):
+            allure.dynamic.title("Детали фильма по ID: 4866668")
+            test_movie_id = 4866668
+
+        with allure.step("Запрос детальной информации о фильме"):
+            endpoint = f"/film/{test_movie_id}"
+            response = api_client.get(BASE_URL + endpoint, headers=HEADERS)
+            allure.attach(f"Movie ID: {test_movie_id}",
+                          name="Request Parameter")
+
+        with allure.step("Проверка корректности ответа"):
+            assert response.status_code == 200
+            data = response.json()
+
+        with allure.step("Валидация обязательных полей фильма"):
+            assert "id" in data
+            assert "name" in data
+            assert "rating" in data
+            assert "year" in data
+
+        with allure.step("Проверка соответствия ID запроса и ответа"):
+            assert data["id"] == test_movie_id
+            allure.attach(
+                f"Название фильма: {data['name']}", name="Movie Title")
+            allure.attach(f"Год выпуска: {data['year']}", name="Release Year")

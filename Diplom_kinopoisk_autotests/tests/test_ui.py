@@ -1,198 +1,159 @@
-import pytest
-import allure
+import os
+from dotenv import load_dotenv
+# Import для работы с выпадающим списком
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
-from unittest.mock import MagicMock
+from selenium.webdriver.common.keys import Keys
+import pytest
 
 
-class MockDriver(MagicMock):
-    def __init__(self):
-        super().__init__()
-        self.title = "КиноПоиск — фильмы, сериалы, актёры"
-        self.current_url = "https://www.kinopoisk.ru/"
-
-    def get(self, url):
-        self.current_url = url
-
-    def find_element(self, by=By.ID, value=None):
-        element = MagicMock()
-        if value == "search_input":
-            element.send_keys = MagicMock()
-            element.submit = MagicMock()
-        elif value == "search_results":
-            element.text = "Зеленая миля (1999)"
-        elif value == "login_email":
-            element.send_keys = MagicMock()
-        elif value == "login_password":
-            element.send_keys = MagicMock()
-        elif value == "login_button":
-            element.click = MagicMock()
-            self.current_url = "https://www.kinopoisk.ru/profile/"
-        elif value == "register_email":
-            element.send_keys = MagicMock()
-        elif value == "register_password":
-            element.send_keys = MagicMock()
-        elif value == "register_name":
-            element.send_keys = MagicMock()
-        elif value == "register_button":
-            element.click = MagicMock()
-            self.current_url = "https://www.kinopoisk.ru/welcome/"
-        elif value == "movie_session":
-            element.click = MagicMock()
-        elif value == "seat_selection":
-            element.click = MagicMock()
-        elif value == "buy_button":
-            element.click = MagicMock()
-            self.current_url = "https://www.kinopoisk.ru/ticket/success/"
-        elif value == "success_message":
-            element.text = "Билет успешно приобретен!"
-        return element
+load_dotenv()  # Загружаем переменные окружения из .env файла
 
 
-@allure.epic("КиноПоиск - UI Тестирование")
-@allure.feature("Пользовательские сценарии")
-class TestKinopoiskUI:
+@pytest.fixture(scope="session")
+def browser():
+    """Инициализируем браузер перед началом сессии."""
+    from selenium import webdriver
+    driver = webdriver.Chrome()
+    yield driver
+    driver.quit()
 
-    @pytest.fixture
-    def driver(self):
-        return MockDriver()
 
-    @allure.story("Базовая функциональность")
-    @allure.severity(allure.severity_level.BLOCKER)
-    @allure.description("""
-    Тест проверяет доступность главной страницы КиноПоиска.
-    Это критически важный сценарий для работы всего сайта.
-    """)
-    @allure.tag("smoke", "critical", "homepage")
-    def test_homepage_load(self, driver):
-        with allure.step("Открытие главной страницы КиноПоиска"):
-            allure.dynamic.title("Проверка загрузки главной страницы")
-            driver.get("https://www.kinopoisk.ru/")
+@pytest.fixture
+def wait(browser):
+    """Ожидание элементов интерфейса."""
+    return WebDriverWait(browser, 30)  # Таймаут увеличен до 30 секунд
 
-        with allure.step("Проверка заголовка страницы"):
-            assert "КиноПоиск" in driver.title
-            allure.attach(
-                f"Заголовок страницы: {driver.title}", name="Page Title")
 
-    @allure.story("Поисковые возможности")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description("Тестирование поиска конкретного фильма по названию")
-    @allure.tag("search", "regression")
-    def test_movie_search(self, driver):
-        with allure.step("Ввод названия фильма в поисковую строку"):
-            allure.dynamic.title("Поиск фильма 'Зеленая миля'")
-            search = driver.find_element(By.ID, "search_input")
-            search.send_keys("Зеленая миля")
+@pytest.fixture
+def base_url():
+    """Базовый URL тестируемого сайта."""
+    return os.getenv('BASE_URL', 'https://www.kinopoisk.ru/')
 
-        with allure.step("Отправка поискового запроса"):
-            search.submit()
-            allure.attach("Поисковый запрос: 'Зеленая миля'",
-                          name="Search Query")
 
-        with allure.step("Валидация результатов поиска"):
-            results = driver.find_element(By.CLASS_NAME, "search_results")
-            assert "Зеленая миля" in results.text
-            allure.attach(
-                f"Результаты поиска: {results.text}", name="Search Results")
+@pytest.mark.parametrize(
+    "search_term",
+    [
+        ("Зеленая миля"),  # Используем реальный фильм
+        ("Матрица")
+    ],
+)
+def test_search_movie(browser, wait, base_url, search_term):
+    """
+    Тестирование поиска фильма по названию.
+    """
+    browser.get(base_url)
+    search_input = browser.find_element(By.NAME, "kp_query")
+    search_input.clear()
+    search_input.send_keys(search_term + Keys.ENTER)
 
-    @allure.story("Аутентификация пользователя")
-    @allure.severity(allure.severity_level.NORMAL)
-    @allure.description("""
-    Сценарий входа зарегистрированного пользователя в систему.
-    Проверяет корректность работы формы авторизации.
-    """)
-    @allure.tag("auth", "login", "security")
-    def test_user_login(self, driver):
-        test_email = "test@example.com"
-        test_password = "password123"
+    # Ждем появление результатов поиска
+    wait.until(EC.presence_of_all_elements_located(
+        (By.CSS_SELECTOR, ".styles_root__I2ZoX a")))
+    results = browser.find_elements(By.CSS_SELECTOR, ".styles_root__I2ZoX a")
+    assert len(
+        results) > 0, f"Результатов поиска для '{search_term}' не найдено."
 
-        with allure.step("Заполнение поля email"):
-            allure.dynamic.title("Авторизация пользователя")
-            email = driver.find_element(By.ID, "login_email")
-            email.send_keys(test_email)
-            allure.attach(f"Введен email: {test_email}", name="Email Input")
 
-        with allure.step("Заполнение поля пароля"):
-            password = driver.find_element(By.ID, "login_password")
-            password.send_keys(test_password)
-            allure.attach("Введен пароль: ***", name="Password Input")
+def test_login(browser, wait, base_url):
+    """
+    Тестирует вход на сайт с действительными учетными данными.
+    """
+    browser.get(f"{base_url}/account/login/")
+    email_input = browser.find_element(By.NAME, "email")
+    password_input = browser.find_element(By.NAME, "password")
+    sign_in_btn = browser.find_element(
+        By.XPATH, "//button[contains(text(), 'Войти')]")
 
-        with allure.step("Клик по кнопке 'Войти'"):
-            login_btn = driver.find_element(By.ID, "login_button")
-            login_btn.click()
+    credentials = {
+        "email": os.getenv('EMAIL'),  # Используем настоящие данные из .env
+        "password": os.getenv('PASSWORD')
+    }
+    email_input.send_keys(credentials["email"])
+    password_input.send_keys(credentials["password"])
+    sign_in_btn.click()
 
-        with allure.step("Проверка успешной авторизации"):
-            assert "/profile/" in driver.current_url
-            allure.attach(
-                f"Текущий URL: {driver.current_url}", name="Redirect URL")
+    # Ждем успешного входа
+    wait.until(EC.visibility_of_element_located(
+        (By.XPATH, "//span[contains(@class,'headerProfileLink__nickname')]")))
+    profile_link = browser.find_element(
+        By.XPATH, "//span[contains(@class,'headerProfileLink__nickname')]")
+    assert profile_link.is_displayed(), "Пользователь не вошел успешно."
 
-    @allure.story("Регистрация новых пользователей")
-    @allure.severity(allure.severity_level.NORMAL)
-    @allure.description("Тестирование процесса создания нового аккаунта")
-    @allure.tag("auth", "registration", "onboarding")
-    def test_user_registration(self, driver):
-        user_data = {
-            "email": "newuser@example.com",
-            "password": "newpassword123",
-            "name": "Иван Иванов"
-        }
 
-        with allure.step("Заполнение формы регистрации"):
-            allure.dynamic.title("Регистрация нового пользователя")
+def test_buy_ticket(browser, wait, base_url):
+    """
+    Тестирует процесс покупки билета на фильм.
+    """
+    browser.get(f"{base_url}")
+    search_input = browser.find_element(By.NAME, "kp_query")
+    search_input.send_keys("Довод" + Keys.ENTER)
 
-            with allure.step("Ввод email"):
-                email = driver.find_element(By.ID, "register_email")
-                email.send_keys(user_data["email"])
+    # Ждём первую ссылку на фильм
+    wait.until(EC.presence_of_element_located(
+        (By.XPATH, "(//a[contains(@href,'/film/')])[1]")))
+    first_result = browser.find_element(
+        By.XPATH, "(//a[contains(@href,'/film/')])[1]")
+    first_result.click()
 
-            with allure.step("Ввод пароля"):
-                password = driver.find_element(By.ID, "register_password")
-                password.send_keys(user_data["password"])
+    # Ждём появления кнопки "Купить билеты"
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//a[contains(text(),'Купить билеты')]")))
+    buy_tickets_btn = browser.find_element(
+        By.XPATH, "//a[contains(text(),'Купить билеты')]")
+    buy_tickets_btn.click()
 
-            with allure.step("Ввод имени"):
-                name = driver.find_element(By.ID, "register_name")
-                name.send_keys(user_data["name"])
+    # Выбираем ближайший подходящий сеанс
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//select[@name='session']")))
+    session_select = Select(browser.find_element(
+        By.XPATH, "//select[@name='session']"))  # Используем Select
+    session_select.select_by_visible_text("Сегодня вечером")
 
-            allure.attach(str(user_data), name="User Registration Data")
+    # Ждём возможность выбрать лучшие места
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//input[@type='checkbox' and @value='best-seat']")))
+    best_seats_checkbox = browser.find_element(
+        By.XPATH, "//input[@type='checkbox' and @value='best-seat']")
+    best_seats_checkbox.click()
 
-        with allure.step("Подтверждение регистрации"):
-            register_btn = driver.find_element(By.ID, "register_button")
-            register_btn.click()
+    # Продолжаем оплату
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//button[contains(text(),'Продолжить оплату')]")))
+    proceed_to_payment = browser.find_element(
+        By.XPATH, "//button[contains(text(),'Продолжить оплату')]")
+    proceed_to_payment.click()
 
-        with allure.step("Проверка успешной регистрации"):
-            assert "/welcome/" in driver.current_url
-            allure.attach(
-                f"Редирект после регистрации: {
-                    driver.current_url}", name="Post-Registration URL")
+    # Подтверждаем успешную покупку
+    wait.until(EC.visibility_of_element_located(
+        (By.XPATH, "//p[contains(text(),'Оплата билетов')]")))
+    payment_confirmation = browser.find_element(
+        By.XPATH, "//p[contains(text(),'Оплата билетов')]").text
+    assert "Оплата билетов" in payment_confirmation
+    "Покупка билета завершилась неудачно"
 
-    @allure.story("Покупка и бронирование")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description("""
-    End-to-end сценарий покупки билета в кино.
-    Включает выбор сеанса, места и завершение покупки.
-    """)
-    @allure.tag("ecommerce", "payment", "ticket")
-    def test_buy_ticket(self, driver):
-        with allure.step("Выбор сеанса для просмотра"):
-            allure.dynamic.title("Покупка билета в кино")
-            session = driver.find_element(By.CLASS_NAME, "movie_session")
-            session.click()
-            allure.attach("Выбран сеанс фильма", name="Session Selection")
 
-        with allure.step("Выбор места в кинозале"):
-            seat = driver.find_element(By.CLASS_NAME, "seat_selection")
-            seat.click()
-            allure.attach("Выбрано место в зале", name="Seat Selection")
-
-        with allure.step("Подтверждение и оплата билета"):
-            buy_btn = driver.find_element(By.ID, "buy_button")
-            buy_btn.click()
-
-        with allure.step("Верификация успешной покупки"):
-            assert "/ticket/success/" in driver.current_url
-
-            success = driver.find_element(By.ID, "success_message")
-            assert "Билет успешно" in success.text
-
-            allure.attach(
-                f"Сообщение об успехе: {success.text}", name="Success Message")
-            allure.attach(
-                f"Финальный URL: {driver.current_url}", name="Final URL")
+@pytest.mark.parametrize("rating", [7.5, 8.0, 8.5])
+def test_search_by_rating(browser, wait, base_url, rating):
+    """
+    Тестирует поиск фильмов по минимальному рейтингу.
+    """
+    browser.get(
+        f"""{base_url}/catalog/films/?ratingFrom={rating}&sortField=RATING&
+        sortType=-1""")
+    wait.until(EC.presence_of_all_elements_located(
+        (By.XPATH, "//div[@class='styles_root__I2ZoX']//a")))
+    results = browser.find_elements(
+        By.XPATH, "//div[@class='styles_root__I2ZoX']//a")
+    for result in results[:5]:  # Проверяем первые пять фильмов
+        title_and_rating = result.text.split("\n")
+        if len(title_and_rating) > 1:
+            try:
+                film_rating = float(title_and_rating[-1].split()[0])
+                assert film_rating >= rating, \
+                    f"""Фильм {title_and_rating[0]} имеет рейтинг
+                    ниже заданного ({rating})"""
+            except ValueError:
+                continue  # Пропустить фильмы без рейтинга

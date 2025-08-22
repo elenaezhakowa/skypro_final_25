@@ -1,29 +1,33 @@
 import pytest
-# from unittest.mock import patch
-from utils.mocks import MockDriver, KinopoiskMockClient
+import allure
+from utils.browser_utils import create_stealth_browser
+from utils.mocks import KinopoiskMockClient
+from selenium.common.exceptions import WebDriverException
 
 
 @pytest.fixture
 def driver():
-    """Фикстура для мок-драйвера Selenium"""
-    return MockDriver()
+    """Фикстура для stealth браузера"""
+    driver = None
+    try:
+        driver = create_stealth_browser()
+        yield driver
+
+    except WebDriverException as e:
+        pytest.fail(f"Не удалось инициализировать WebDriver: {e}")
+
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except WebDriverException:
+                pass
 
 
 @pytest.fixture
 def api_client():
     """Фикстура для мок-клиента API Кинопоиска"""
     client = KinopoiskMockClient()
-    # Сбрасываем моки перед каждым тестом (добавлено для надежности)
     client.reset_mocks()
     yield client
-    # И после теста тоже сбрасываем
     client.reset_mocks()
-
-
-@pytest.fixture(autouse=True)
-def mock_webdriver(monkeypatch):
-    """Монкипатч для WebDriver"""
-    monkeypatch.setattr(
-        "selenium.webdriver.Chrome",
-        lambda *args, **kwargs: MockDriver()
-    )
