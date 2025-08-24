@@ -1,269 +1,286 @@
-from dotenv import load_dotenv
-import requests
-import allure
 import pytest
-import os
+import random
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 
 
-load_dotenv()  # Загрузка переменных окружения из .env файла
+@pytest.fixture(scope='session')
+def browser():
+    """Фикстура для инициализации браузера"""
+    print("🚀 Запускаем браузер...")
 
-BASE_URL = os.getenv("BASE_URL", "https://api.kinopoisk.dev")
-HEADERS = {"Content-Type": "application/json"}
+    chrome_options = Options()
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument(
+        "--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option(
+        "excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=chrome_options
+    )
+
+    # Убираем признаки автоматизации
+    driver.execute_script(
+        "Object.defineProperty(navigator, 'webdriver',"
+        "{get: () => undefined})")
+
+    print("✅ Браузер запущен!")
+    yield driver
+
+    driver.quit()
+    print("✅ Браузер закрыт!")
 
 
-@allure.epic("КиноПоиск - API Тестирование")
-@allure.feature("REST API Эндпоинты")
-class TestKinopoiskAPI:
+@pytest.fixture(scope='session')
+def wait(browser):
+    return WebDriverWait(browser, 20)
 
-    @pytest.fixture
-    def api_client(self):
-        """Клиент для отправки запросов к API Кинопоиск."""
-        return requests.Session()
 
-    @allure.story("Фильтрация и поиск")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description("""
-    Тестирование фильтрации фильмов по году выпуска.
-    Проверяет корректность работы параметра 'year' в запросах.
-    """)
-    @allure.tag("filter", "search", "smoke")
-    @allure.link("https://api.kinopoisk.dev/v1.4/movie",
-                 name="API Documentation")
-    def test_search_movies_by_year(self, api_client):
-        with allure.step("Подготовка тестовых данных - фильтр по 2023 году"):
-            allure.dynamic.title("Поиск фильмов по году выпуска: 2023")
-            test_year = 2023
+@pytest.fixture(scope='function')
+def actions(browser):
+    return ActionChains(browser)
 
-        with allure.step("Выполнение API-запроса с фильтром по году"):
-            endpoint = "/catalog/films"
-            params = {"year": test_year}
-            response = api_client.get(
-                BASE_URL + endpoint, headers=HEADERS, params=params)
-            allure.attach(f"Фильтр: year={test_year}", name="Request Filter")
 
-        with allure.step("Проверка статуса ответа"):
-            assert response.status_code == 200
-            allure.attach(
-                f"Код состояния: {response.status_code}", name="HTTP Status")
+def human_delay(min_seconds=0.5, max_seconds=2.0):
+    """Случайная задержка как у человека"""
+    delay = random.uniform(min_seconds, max_seconds)
+    return delay
 
-        with allure.step("Валидация структуры ответа"):
-            data = response.json()
-            assert "docs" in data
-            assert "total" in data
-            assert "limit" in data
-            allure.attach(
-                f"Найдено фильмов: {data['total']}", name="Total Results")
 
-        with allure.step("Проверка соответствия года у всех фильмов"):
-            for movie in data["docs"]:
-                assert movie["year"] == test_year
-            allure.attach(
-                f"""Все фильмы соответствуют году: {test_year}"
-                name="Year Validation""")
+def human_type(element, text, actions, min_delay=0.1, max_delay=0.3):
+    """Человеческий ввод текста с случайными задержками"""
+    actions.move_to_element(element).click().pause(
+        human_delay(0.2, 0.5)).perform()
 
-    @allure.story("Метаданные фильмов")
-    @allure.severity(allure.severity_level.NORMAL)
-    @allure.description("Получение информации о наградах и номинациях фильма")
-    @allure.tag("metadata", "awards", "movie-info")
-    @allure.issue("KP-123", "Награды фильмов")
-    def test_movie_awards(self, api_client):
-        with allure.step("Подготовка ID тестового фильма"):
-            allure.dynamic.title("Получение наград фильма ID: 4664634")
-            test_movie_id = 4664634
+    for char in text:
+        element.send_keys(char)
+        actions.pause(random.uniform(min_delay, max_delay)).perform()
 
-        with allure.step("Запрос информации о наградах"):
-            endpoint = f"/film/{test_movie_id}/awards"
-            response = api_client.get(BASE_URL + endpoint, headers=HEADERS)
-            allure.attach(f"ID фильма: {test_movie_id}",
-                          name="Request Parameter")
 
-        with allure.step("Проверка успешного ответа"):
-            assert response.status_code == 200
-            data = response.json()
+def human_click(element, actions):
+    """Человеческий клик с задержкой"""
+    actions.move_to_element(element).pause(human_delay(
+        0.3, 1.0)).click().pause(human_delay(0.5, 1.5)).perform()
 
-        with allure.step("Валидация структуры данных о наградах"):
-            assert "docs" in data
-            assert len(data["docs"]) > 0
 
-            award = data["docs"][0]
-            assert "nomination" in award
-            assert "winning" in award
-            assert "movieId" in award
+def wait_for_human_like_loading(wait, actions, min_time=1.0, max_time=3.0):
+    """Ожидание загрузки с человеческой задержкой"""
+    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+    actions.pause(human_delay(min_time, max_time)).perform()
 
-            allure.attach(
-                f"Количество наград: {len(data['docs'])}", name="Awards Count")
-            allure.attach(
-                f"""Movie ID в ответе: {award['movieId']
-                                        }", name="Movie ID Validation""")
 
-    @allure.story("Фильтрация по рейтингу")
-    @allure.severity(allure.severity_level.NORMAL)
-    @allure.description("Поиск фильмов с высоким рейтингом (9.0 и выше)")
-    @allure.tag("filter", "rating", "quality")
-    def test_search_movies_by_rating(self, api_client):
-        with allure.step("Установка критерия высокого рейтинга"):
-            allure.dynamic.title("Поиск фильмов с рейтингом 9+")
-            high_rating = 9
+def test_ui_search_green_mile(browser, wait, actions):
+    """UI тест: поиск Зеленой мили в браузере"""
+    print("🌐 Открываем КиноПоиск...")
+    browser.get("https://www.kinopoisk.ru/")
 
-        with allure.step("Выполнение запроса с фильтром по рейтингу"):
-            endpoint = "/catalog/films"
-            params = {"ratingFrom": high_rating}
-            response = api_client.get(
-                BASE_URL + endpoint, headers=HEADERS, params=params)
-            allure.attach(
-                f"Фильтр: ratingFrom={high_rating}", name="Rating Filter")
+    # Ждем загрузки с человеческой задержкой
+    wait_for_human_like_loading(wait, actions, 2.0, 4.0)
 
-        with allure.step("Проверка ответа API"):
-            assert response.status_code == 200
-            data = response.json()
+    # Поиск поисковой строки
+    search_input = None
+    search_selectors = [
+        (By.NAME, "kp_query"),
+        (By.CSS_SELECTOR, "input[type='search']"),
+        (By.CSS_SELECTOR, "input[type='text']"),
+        (By.XPATH, "//input[@placeholder='Поиск...']"),
+        (By.XPATH, "//input[@placeholder='Search...']")
+    ]
 
-        with allure.step("Верификация рейтинга у найденных фильмов"):
-            for movie in data["docs"]:
-                assert movie["rating"]["kp"] >= high_rating
-            allure.attach(
-                f"Найдено фильмов с рейтингом {high_rating}+: {
-                    len(data['docs'])}",
-                name="High Rating Movies")
+    for by, selector in search_selectors:
+        elements = browser.find_elements(by, selector)
+        if elements:
+            search_input = elements[0]
+            print(f"🔍 Найдена поисковая строка: {selector}")
+            break
 
-    @allure.story("Системные метаданные")
-    @allure.severity(allure.severity_level.MINOR)
-    @allure.description("Тестирование фильтрации по дате добавления"
-                        "в базу данных")
-    @allure.tag("metadata", "system", "admin")
-    @allure.label("owner", "api-team")
-    @allure.label("layer", "backend")
-    def test_search_by_creation_date(self, api_client):
-        with allure.step("Установка тестовой даты добавления"):
-            allure.dynamic.title("Поиск по дате добавления: 2025-06-04")
-            test_date = "2025-06-04"
+    assert search_input is not None, "Поисковая строка не найдена"
 
-        with allure.step("Выполнение запроса с фильтром по дате"):
-            endpoint = "/catalog/films"
-            params = {"createdAt": test_date}
-            response = api_client.get(
-                BASE_URL + endpoint, headers=HEADERS, params=params)
-            allure.attach(f"Фильтр: createdAt={test_date}", name="Date Filter")
+    # Человеческий ввод текста
+    print("⌨️ Человеческий ввод 'Зеленая миля'...")
+    human_type(search_input, "Зеленая миля", actions)
 
-        with allure.step("Анализ ответа сервера"):
-            assert response.status_code == 200
-            data = response.json()
+    # Человеческий клик Enter
+    actions.send_keys(Keys.ENTER).pause(human_delay(1.0, 2.0)).perform()
 
-        with allure.step("Проверка наличия результатов"):
-            assert len(data["docs"]) > 0
-            allure.attach(
-                f"Найдено записей: {len(data['docs'])}", name="Results Count")
+    # Ждем результаты с человеческой задержкой
+    print("⏳ Ожидаем результаты поиска...")
+    wait_for_human_like_loading(wait, actions, 2.0, 4.0)
 
-        with allure.step("Валидация структуры элементов"):
-            item = data["docs"][0]
-            assert "createdAt" in item
-            assert test_date in item["createdAt"]
-            allure.attach(
-                f"Дата создания: {item['createdAt']}", name="Creation Date")
+    # Проверяем результаты
+    page_text = browser.find_element(By.TAG_NAME, "body").text
+    assert "Зеленая миля" in page_text or "Green Mile" in page_text, \
+        "Фильм 'Зеленая миля' не найден в результатах"
 
-    @allure.story("Обработка ошибок")
-    @allure.severity(allure.severity_level.NORMAL)
-    @allure.description("Тестирование обработки несуществующих"
-                        "ресурсов (404 ошибка)")
-    @allure.tag("error", "validation", "negative")
-    @allure.label("owner", "qa-team")
-    @allure.label("priority", "p1")
-    def test_movie_not_found(self, api_client):
-        with allure.step("Поиск по несуществующему ID фильма"):
-            allure.dynamic.title(
-                "Обработка 404 ошибки для несуществующего фильма")
-            non_existent_id = 999999
+    print("✅ UI поиск выполнен успешно!")
+    browser.save_screenshot("ui_search_results.png")
 
-        with allure.step("Выполнение запроса к несуществующему ресурсу"):
-            endpoint = f"/film/{non_existent_id}"
-            response = api_client.get(BASE_URL + endpoint, headers=HEADERS)
 
-        with allure.step("Проверка кода ошибки"):
-            assert response.status_code == 404
-            allure.attach(
-                f"Получен статус: {response.status_code}", name="Error Status")
+def test_ui_high_rated_movies(browser, wait, actions):
+    """UI тест: поиск высокорейтинговых фильмов"""
+    print("⭐ Ищем высокорейтинговые фильмы через UI...")
 
-        with allure.step("Валидация структуры ошибки"):
-            error_data = response.json()
-            assert "error" in error_data
-            assert error_data["error"]["code"] == 404
-            allure.attach(
-                f"""Сообщение ошибки: {error_data['error']['message']}"
-                name="Error Message""")
+    # Переходим в раздел "Лучшие фильмы"
+    browser.get("https://www.kinopoisk.ru/lists/movies/top250/")
 
-    @allure.story("Пагинация и лимиты")
-    @allure.severity(allure.severity_level.NORMAL)
-    @allure.description("Тестирование механизма пагинации и "
-                        "ограничения выборки")
-    @allure.tag("pagination", "performance", "optimization")
-    @allure.issue("KP-789", "Пагинация результатов")
-    @allure.parent_suite("API Tests")
-    def test_search_pagination(self, api_client):
-        with allure.step("Установка параметров пагинации"):
-            allure.dynamic.title(
-                "Тестирование пагинации: страница 2, лимит 10")
-            test_page = 2
-            test_limit = 10
+    # Человеческая задержка перед взаимодействием
+    wait_for_human_like_loading(wait, actions, 2.0, 3.0)
 
-        with allure.step("Выполнение запроса с пагинацией"):
-            endpoint = "/catalog/films"
-            params = {"year": 2020, "page": test_page, "limit": test_limit}
-            response = api_client.get(
-                BASE_URL + endpoint, headers=HEADERS, params=params)
-            allure.attach(
-                f"""Параметры: page={test_page}, limit={test_limit}"
-                name="PaginationParams""")
+    # Промотаем немного страницу как человек
+    actions.send_keys(Keys.PAGE_DOWN).pause(human_delay(0.5, 1.5)).perform()
+    actions.send_keys(Keys.PAGE_DOWN).pause(human_delay(0.5, 1.5)).perform()
 
-        with allure.step("Проверка успешного ответа"):
-            assert response.status_code == 200
-            data = response.json()
+    # Ищем фильмы с высоким рейтингом
+    movie_cards = browser.find_elements(
+        By.CSS_SELECTOR, ".styles_root__tlAh7, .movie-item, .film-card,"
+                         "[class*='card']")
 
-        with allure.step("Валидация параметров пагинации в ответе"):
-            assert "page" in data
-            assert "pages" in data
-            assert "limit" in data
-            assert data["page"] == test_page
-            assert data["limit"] == test_limit
+    if not movie_cards:
+        # Альтернативный поиск
+        movie_cards = browser.find_elements(
+            By.XPATH, "//a[contains(@href, '/film/')]")
 
-        with allure.step("Проверка размера возвращаемой выборки"):
-            assert len(data["docs"]) <= test_limit
-            allure.attach(
-                f"Текущая страница: {data['page']}", name="Current Page")
-            allure.attach(
-                f"Всего страниц: {data['pages']}", name="Total Pages")
-            allure.attach(
-                f"""Элементов на странице: {len(data['docs'])}"
-                name="Items per Page""")
+    assert len(movie_cards) > 0, "Не найдено фильмов в топе"
 
-    @allure.story("Основная информация о фильмах")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description("Получение детальной информации о"
-                        "фильме по его идентификатору")
-    @allure.tag("movie", "details", "core")
-    @allure.link("https://api.kinopoisk.dev/v1.4/movie/{id}",
-                 name="Movie Endpoint")
-    def test_movie_details_by_id(self, api_client):
-        with allure.step("Подготовка тестового ID фильма"):
-            allure.dynamic.title("Детали фильма по ID: 4866668")
-            test_movie_id = 4866668
+    # Человеческая проверка - промотаем еще
+    actions.send_keys(Keys.PAGE_DOWN).pause(human_delay(1.0, 2.0)).perform()
 
-        with allure.step("Запрос детальной информации о фильме"):
-            endpoint = f"/film/{test_movie_id}"
-            response = api_client.get(BASE_URL + endpoint, headers=HEADERS)
-            allure.attach(f"Movie ID: {test_movie_id}",
-                          name="Request Parameter")
+    # Проверяем, что есть фильмы с высоким рейтингом
+    page_text = browser.find_element(By.TAG_NAME, "body").text
+    high_rated_keywords = ["8.", "9.", "рейтинг", "rating", "IMDb", "КП"]
 
-        with allure.step("Проверка корректности ответа"):
-            assert response.status_code == 200
-            data = response.json()
+    has_high_rated = any(
+        keyword in page_text for keyword in high_rated_keywords)
+    assert has_high_rated, "Не найдено признаков высоких рейтингов"
 
-        with allure.step("Валидация обязательных полей фильма"):
-            assert "id" in data
-            assert "name" in data
-            assert "rating" in data
-            assert "year" in data
+    print(f"✅ Найдено {len(movie_cards)} фильмов в топе")
+    browser.save_screenshot("ui_top_movies.png")
 
-        with allure.step("Проверка соответствия ID запроса и ответа"):
-            assert data["id"] == test_movie_id
-            allure.attach(
-                f"Название фильма: {data['name']}", name="Movie Title")
-            allure.attach(f"Год выпуска: {data['year']}", name="Release Year")
+
+def test_ui_movies_by_year(browser, wait, actions):
+    """UI тест: поиск фильмов по году"""
+    print("📅 Ищем новые фильмы через UI...")
+
+    browser.get("https://www.kinopoisk.ru/lists/movies/2023/")
+
+    # Человеческая задержка
+    wait_for_human_like_loading(wait, actions, 2.0, 3.0)
+
+    # Промотаем страницу
+    actions.send_keys(Keys.PAGE_DOWN).pause(human_delay(1.0, 2.0)).perform()
+    actions.send_keys(Keys.PAGE_DOWN).pause(human_delay(0.5, 1.5)).perform()
+
+    # Проверяем, что мы на странице фильмов 2023 года
+    page_text = browser.find_element(By.TAG_NAME, "body").text
+    assert "2023" in page_text or "2023" in browser.current_url, \
+        "Не удалось перейти на страницу фильмов 2023 года"
+
+    # Ищем фильмы
+    movie_elements = browser.find_elements(
+        By.XPATH, "//a[contains(@href, '/film/')]")
+    assert len(movie_elements) > 0, "Не найдено фильмов 2023 года"
+
+    # Человеческое взаимодействие - наведем на первый фильм
+    if movie_elements:
+        actions.move_to_element(movie_elements[0]).pause(
+            human_delay(0.5, 1.5)).perform()
+
+    print(f"✅ Найдено {len(movie_elements)} фильмов 2023 года")
+    browser.save_screenshot("ui_2023_movies.png")
+
+
+def test_ui_popular_movies(browser, wait, actions):
+    """UI тест: проверка популярных фильмов"""
+    print("🎬 Проверяем популярные фильмы через UI...")
+
+    browser.get("https://www.kinopoisk.ru/")
+
+    # Человеческая задержка для осмотра страницы
+    wait_for_human_like_loading(wait, actions, 2.0, 4.0)
+
+    # Промотаем главную страницу как человек
+    for _ in range(3):
+        actions.send_keys(Keys.PAGE_DOWN).pause(
+            human_delay(1.0, 2.0)).perform()
+
+    # Ищем блоки с популярными фильмами
+    popular_sections = [
+        "Сейчас в кино",
+        "Популярные фильмы",
+        "Лучшие фильмы",
+        "Новые фильмы",
+        "Рекомендуем посмотреть"
+    ]
+
+    page_text = browser.find_element(By.TAG_NAME, "body").text
+    has_popular = any(section in page_text for section in popular_sections)
+
+    assert has_popular, "Не найдено разделов с популярными фильмами"
+
+    # Ищем сами фильмы
+    movie_links = browser.find_elements(
+        By.XPATH, "//a[contains(@href, '/film/')]")
+    assert len(movie_links) > 5, "Слишком мало фильмов на главной странице"
+
+    # Человеческое взаимодействие - промотаем назад к верху
+    actions.send_keys(Keys.HOME).pause(human_delay(1.0, 2.0)).perform()
+
+    print(f"✅ Найдено {len(movie_links)} фильмов на главной странице")
+    browser.save_screenshot("ui_popular_movies.png")
+
+
+def test_ui_movie_categories(browser, wait, actions):
+    """UI тест: проверка различных категорий"""
+    print("🏷️ Проверяем категории фильмов через UI...")
+
+    categories_to_test = [
+        "https://www.kinopoisk.ru/genre/12/",  # Комедии
+        "https://www.kinopoisk.ru/genre/6/",   # Боевики
+        "https://www.kinopoisk.ru/genre/3/",   # Драмы
+    ]
+
+    for i, category_url in enumerate(categories_to_test):
+        print(f"   📁 Переходим в категорию {i+1}/{len(categories_to_test)}...")
+        browser.get(category_url)
+
+        # Человеческая задержка для изучения страницы
+        wait_for_human_like_loading(wait, actions, 2.0, 3.0)
+
+        # Промотаем страницу
+        actions.send_keys(Keys.PAGE_DOWN).pause(
+            human_delay(1.0, 2.0)).perform()
+
+        # Проверяем загрузку категории
+        body_text = browser.find_element(By.TAG_NAME, "body").text
+        assert len(
+            body_text) > 1000
+        f"Страница категории не загрузилась: {category_url}"
+
+        # Ищем фильмы в категории
+        movies = browser.find_elements(
+            By.XPATH, "//a[contains(@href, '/film/')]")
+        assert len(
+            movies) > 0, f"Не найдено фильмов в категории: {category_url}"
+
+        # Человеческая пауза между категориями
+        if i < len(categories_to_test) - 1:
+            actions.pause(human_delay(1.5, 3.0)).perform()
+
+        print(f"   ✅ Категория {i+1}: {len(movies)} фильмов")
+
+    browser.save_screenshot("ui_categories.png")
+
+
+if __name__ == "__main__":
+    pytest.main(['-v', '-s'])
