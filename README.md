@@ -73,12 +73,16 @@ Diplom_kinopoisk_autotests/
 ```bash
 pytest tests/ --alluredir=allure-results
 ```
+**Запуск только API-тестов**:
+```bash
+pytest tests/test_api.py --alluredir=allure-results
+```
 
 **Запуск только UI-тестов**:
 ```bash
 pytest tests/test_ui.py --alluredir=allure-results
 ```
-   ```
+
 
 2. **Настройка переменных окружения**:
    Создайте файл `.env` и настройте параметры:
