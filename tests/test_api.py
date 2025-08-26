@@ -1,6 +1,6 @@
 # TEST_UI.PY
 import pytest
-import requests
+# import requests
 import os
 import allure
 import time
@@ -10,9 +10,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
+# from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException
+# NoSuchElementException
 
 load_dotenv()
 
@@ -36,7 +37,8 @@ def browser():
 
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script(
-        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
     driver.implicitly_wait(10)
 
     yield driver
@@ -50,7 +52,8 @@ def accept_cookies(browser):
         cookie_button = WebDriverWait(browser, 5).until(
             EC.element_to_be_clickable(
                 (By.XPATH, "//button[contains(text(), 'Принять') or"
-                 "contains(text(), 'Accept') or contains(text(), 'Согласен')]"))
+                 "contains(text(), 'Accept') or contains(text(), 'Согласен')]")
+                 )
         )
         cookie_button.click()
         print("✅ Cookies приняты")
@@ -139,7 +142,8 @@ def test_ui_main_page_load(browser):
                     if search_elements and search_elements[0].is_displayed():
                         search_found = True
                         print(
-                            f"✅ Поисковая строка найдена (селектор: {selector})")
+                            f"""✅ Поисковая строка найдена (селектор:
+                            {selector})""")
                         break
                 except:
                     continue
@@ -151,7 +155,8 @@ def test_ui_main_page_load(browser):
                 if search_buttons:
                     print("✅ Кнопка поиска найдена")
                 else:
-                    print("⚠ Поисковая строка не найдена, но тест продолжается")
+                    print("⚠ Поисковая строка не найдена,"
+                          "но тест продолжается")
 
         except Exception as e:
             print(f"⚠ Ошибка при поиске поисковой строки: {str(e)}")
@@ -180,7 +185,7 @@ def test_ui_search_green_mile(browser):
                 "button[aria-label*='поиск'], button[type='submit'],"
                 ".search-button, [class*='search'] button,"
                 "svg[class*='search']"
-                                                   )
+            )
 
             if search_buttons:
                 search_buttons[0].click()
@@ -196,7 +201,7 @@ def test_ui_search_green_mile(browser):
                 By.CSS_SELECTOR,
                 "input[type='text']:focus, input[placeholder*='поиск'],"
                 "input[placeholder*='фильм']"
-                                                  )
+            )
 
             if not search_inputs:
                 # Если не нашли, пробуем все input'ы
@@ -316,9 +321,9 @@ def test_ui_open_movie_page(browser):
         try:
             title_elements = browser.find_elements(
                 By.CSS_SELECTOR,
-                
+
                 "h1, .title, [data-testid*='title'], .film-title, .movie-title"
-                                                   )
+            )
 
             if title_elements:
                 movie_title = title_elements[0].text
@@ -333,7 +338,7 @@ def test_ui_open_movie_page(browser):
                         print(f"✅ Заголовок страницы: {page_title}")
                     else:
                         print("⚠ Не удалось извлечь название,"
-                        
+
                               "но страница загружена")
             else:
                 print("⚠ Элемент с названием не найден, но страница загружена")
@@ -461,7 +466,7 @@ def test_ui_movies_in_cinema(browser):
                 By.CSS_SELECTOR,
                 "[class*='movie'], [class*='film'], .card, .item, .element,"
                 "img, .poster"
-                                                     )
+            )
 
             if len(content_elements) > 5:  # Если найдено достаточно элементов
                 print(
