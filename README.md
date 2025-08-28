@@ -42,7 +42,7 @@ Diplom_kinopoisk_autotests/
    TIMEOUT=30
 
    # API ключ для Kinopoisk API
-   KINOPOISK_API_KEY=J1QQBR9-K7BMA97-PT2HM7F-B63VY5E
+   KINOPOISK_API_KEY=
    ```
 
 ## Запуск тестов
